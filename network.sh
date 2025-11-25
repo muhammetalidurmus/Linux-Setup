@@ -8,12 +8,6 @@ set -e
 echo "🌐 Ubuntu Static IP Konfigürasyon Script'i"
 echo "=========================================="
 
-# Root kontrolü
-if [[ $EUID -ne 0 ]]; then
-   echo "❌ Bu script'i sudo ile çalıştırın."
-   exit 1
-fi
-
 # Mevcut network interface'leri göster
 echo "📡 Mevcut network durumu:"
 ip addr show | grep -E "(inet |UP|DOWN)" --color=never
@@ -64,9 +58,9 @@ echo "✅ Interface '$INTERFACE' bulundu."
 echo ""
 
 # IP bilgilerini topla
-read -p "🏠 Static IP adresini girin (örn: 192.168.1.100): " STATIC_IP
+read -p "🏠 Static IP adresini girin (örn: 10.101.7.100): " STATIC_IP
 read -p "🎯 Subnet mask'ı CIDR formatında girin (örn: 24 for /24): " SUBNET
-read -p "🚪 Gateway IP adresini girin (örn: 192.168.1.1): " GATEWAY
+read -p "🚪 Gateway IP adresini girin (örn: 10.101.7.1): " GATEWAY
 read -p "🌍 Birincil DNS sunucusunu girin (örn: 8.8.8.8): " DNS1
 read -p "🌍 İkincil DNS sunucusunu girin (örn: 1.1.1.1 veya boş bırakın): " DNS2
 
@@ -185,31 +179,14 @@ cat "$NETPLAN_FILE"
 echo "======================================"
 echo ""
 
-# Konfigürasyonu test et
-echo "🔍 Netplan konfigürasyonu test ediliyor..."
-if netplan try --timeout 10; then
-    echo "✅ Konfigürasyon testi başarılı!"
-    echo "🔄 Kalıcı olarak uygulanıyor..."
-    netplan apply
-    echo ""
-    echo "🎉 Static IP konfigürasyonu başarıyla uygulandı!"
-    echo ""
-    echo "📊 Yeni network durumu:"
-    ip addr show "$INTERFACE"
-    echo ""
-    echo "🔗 Bağlantı testi:"
-    echo "Gateway ping: $(ping -c 1 -W 2 "$GATEWAY" > /dev/null 2>&1 && echo "✅ Başarılı" || echo "❌ Başarısız")"
-    echo "DNS testi: $(nslookup google.com "$DNS1" > /dev/null 2>&1 && echo "✅ Başarılı" || echo "❌ Başarısız")"
-else
-    echo "❌ Konfigürasyon testi başarısız!"
-    if [[ -f "$BACKUP_FILE" ]]; then
-        echo "🔄 Eski konfigürasyon geri yükleniyor..."
-        mv "$BACKUP_FILE" "$NETPLAN_FILE"
-        netplan apply
-        echo "✅ Eski konfigürasyon geri yüklendi."
-    fi
-    exit 1
-fi
+# Konfigürasyonu uygula
+echo "🔄 Netplan konfigürasyonu uygulanıyor..."
+netplan apply
+echo ""
+echo "🎉 Static IP konfigürasyonu başarıyla uygulandı!"
+echo ""
+echo "📊 Yeni network durumu:"
+ip addr show "$INTERFACE"
 
 echo ""
 echo "📝 Önemli Notlar:"
