@@ -5,6 +5,18 @@
 
 set -e
 
+# Yetki kontrolü
+if [[ $EUID -ne 0 ]]; then
+    echo "⚠️  UYARI: Bu script root yetkisi gerektiriyor."
+    echo "   'sudo ./network.sh' veya root kullanıcısı ile çalıştırmanız önerilir."
+    read -r -p "   Yine de devam etmek istiyor musunuz? [e/H]: " _DEVAM
+    _DEVAM=${_DEVAM:-H}
+    if [[ ! "$_DEVAM" =~ ^[Ee]$ ]]; then
+        echo "❌ İşlem iptal edildi."
+        exit 1
+    fi
+fi
+
 echo "🌐 Ubuntu Static IP Konfigürasyon Script'i"
 echo "=========================================="
 
