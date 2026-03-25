@@ -76,6 +76,16 @@ $SUDO systemctl enable docker
 echo "👤 Kullanıcı docker grubuna ekleniyor..."
 $SUDO usermod -aG docker $USER
 
+# SSH Konfigürasyonu - PermitRootLogin yes
+echo "🔑 SSH PermitRootLogin ayarlanıyor..."
+$SUDO sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+$SUDO sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+if ! grep -q "PermitRootLogin" /etc/ssh/sshd_config; then
+    echo "PermitRootLogin yes" | $SUDO tee -a /etc/ssh/sshd_config
+fi
+echo "🔄 SSH servisi yeniden başlatılıyor..."
+$SUDO systemctl restart ssh
+
 # UFW güvenlik duvarını kur ve yapılandır
 echo "🛡️ UFW güvenlik duvarı yapılandırılıyor..."
 $SUDO apt install -y ufw
