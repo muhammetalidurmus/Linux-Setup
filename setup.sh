@@ -53,7 +53,7 @@ $SUDO apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null |
 
 # Docker GPG anahtarını ekle
 echo "🔐 Docker GPG anahtarı ekleniyor..."
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO gpg --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 
 # Docker deposunu ekle
 echo "📋 Docker deposu ekleniyor..."
@@ -104,7 +104,7 @@ read -r -p "📦 Node.js 22.x LTS kurulsun mu? [E/h]: " INSTALL_NODE
 INSTALL_NODE=${INSTALL_NODE:-E}
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     echo "📦 Node.js 22.x LTS kuruluyor..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     $SUDO apt install -y nodejs
 
     # npm'i en son sürüme güncelle
