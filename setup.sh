@@ -87,9 +87,7 @@ fi
 # SSH Konfigürasyonu - PermitRootLogin yes
 echo "🔑 SSH PermitRootLogin ayarlanıyor..."
 SSH_CONFIG="/etc/ssh/sshd_config"
-# Önce mevcut satırları güncelle
 $SUDO sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
-# Eğer hiç satır yoksa ekle
 if ! grep -q "^PermitRootLogin" "$SSH_CONFIG"; then
     echo "PermitRootLogin yes" | $SUDO tee -a "$SSH_CONFIG"
 fi
@@ -128,27 +126,12 @@ read -r -p "📦 Node.js 22.x LTS kurulsun mu? [E/h]: " INSTALL_NODE
 INSTALL_NODE=${INSTALL_NODE:-E}
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     echo "📦 Node.js 22.x LTS kuruluyor..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
     $SUDO apt-get install -y nodejs
 
-    # npm'i en son sürüme güncelle
-    # npm'i curl+tar ile yeniden kur (nodesource npm bozuk gelebilir)
-    echo "🔄 npm yeniden kuruluyor..."
-    NPM_VERSION="10.9.2"
-    $SUDO rm -rf /usr/lib/node_modules/npm
-    curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp/npm-install.tgz
-    $SUDO mkdir -p /usr/lib/node_modules/npm
-    $SUDO tar -xzf /tmp/npm-install.tgz -C /usr/lib/node_modules/npm --strip-components=1
-    $SUDO ln -sf /usr/lib/node_modules/npm/bin/npm /usr/bin/npm
-    $SUDO ln -sf /usr/lib/node_modules/npm/bin/npx /usr/bin/npx
-    rm -f /tmp/npm-install.tgz
-
-    if npm --version &>/dev/null 2>&1; then
-        echo "✅ npm sürümü: $(npm --version)"
-    else
-        echo "❌ npm kurulamadı, Claude Code atlanıyor."
-        INSTALL_CLAUDE="h"
-    fi
+    # npm'i kendisi ile güncelle (en güvenilir yöntem)
+    echo "🔄 npm güncelleniyor..."
+    $SUDO npm install -g npm@latest
 
     # Claude Code kurulumu
     if npm --version &>/dev/null 2>&1; then
@@ -160,6 +143,9 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
         else
             echo "⏭️  Claude Code kurulumu atlandı."
         fi
+    else
+        echo "❌ npm kurulamadı, Claude Code atlanıyor."
+        INSTALL_CLAUDE="h"
     fi
 else
     echo "⏭️  Node.js kurulumu atlandı. Claude Code da atlanıyor."
