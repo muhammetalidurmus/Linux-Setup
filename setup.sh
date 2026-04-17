@@ -133,7 +133,16 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
 
     # npm'i en son sürüme güncelle
     echo "🔄 npm güncelleniyor..."
-    $SUDO npm install -g npm@latest
+    # Sistem npm'i bozuk olabileceğinden Node.js'in kendi npm'ini kullan
+    NODE_NPM="$(dirname "$(which node)")/npm"
+    if [[ -x "$NODE_NPM" ]]; then
+        $SUDO "$NODE_NPM" install -g npm@latest
+    else
+        $SUDO npm install -g npm@latest || {
+            echo "⚠️  npm güncellenemedi, mevcut sürümle devam ediliyor..."
+            npm --version || true
+        }
+    fi
 
     # Claude Code kurulumu
     read -r -p "🤖 Claude Code kurulsun mu? [E/h]: " INSTALL_CLAUDE
