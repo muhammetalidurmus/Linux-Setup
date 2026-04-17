@@ -133,15 +133,55 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
 
     # npm'i en son sürüme güncelle
     echo "🔄 npm güncelleniyor..."
-    # Sistem npm'i bozuk olabileceğinden Node.js'in kendi npm'ini kullan
-    NODE_NPM="$(dirname "$(which node)")/npm"
-    if [[ -x "$NODE_NPM" ]]; then
-        $SUDO "$NODE_NPM" install -g npm@latest
+    # nodesource paketi npm bağımlılıklarını eksik kurabilir; npm'i sıfırdan yükle
+    NPM_GLOBAL_DIR=$(node -e "console.log(require('path').dirname(process.execPath))")
+    if npm --version &>/dev/null 2>&1; then
+        # npm çalışıyorsa direkt güncelle
+        $SUDO npm install -g npm@latest
     else
-        $SUDO npm install -g npm@latest || {
-            echo "⚠️  npm güncellenemedi, mevcut sürümle devam ediliyor..."
-            npm --version || true
+        echo "⚠️  Mevcut npm bozuk, npm sıfırdan yükleniyor..."
+        # npm'i tamamen kaldır ve node ile birlikte gelen paketten yeniden kur
+        $SUDO rm -rf /usr/lib/node_modules/npm
+        # npx olmadan node ile npm tarball'ını indir ve kur
+        node -e "
+const https = require('https');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+https.get('https://registry.npmjs.org/npm/latest', (res) => {
+  let body = '';
+  res.on('data', d => body += d);
+  res.on('end', () => {
+    const version = JSON.parse(body).version;
+    const tarUrl = \`https://registry.npmjs.org/npm/-/npm-\${version}.tgz\`;
+    const tmpFile = path.join(os.tmpdir(), 'npm-latest.tgz');
+    const file = fs.createWriteStream(tmpFile);
+    https.get(tarUrl, (r) => {
+      r.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        execSync(\`tar -xzf \${tmpFile} -C /usr/lib/node_modules --strip-components=1 --one-top-level=npm\`, { stdio: 'inherit' });
+        execSync(\`ln -sf /usr/lib/node_modules/npm/bin/npm /usr/bin/npm\`, { stdio: 'inherit' });
+        execSync(\`ln -sf /usr/lib/node_modules/npm/bin/npx /usr/bin/npx\`, { stdio: 'inherit' });
+        console.log('npm kuruldu: ' + version);
+      });
+    });
+  });
+});
+" || {
+            echo "❌ npm yüklenemedi. Claude Code kurulumu atlanıyor."
+            INSTALL_CLAUDE="h"
         }
+    fi
+
+    # Kurulum sonrası doğrulama
+    if npm --version &>/dev/null 2>&1; then
+        echo "✅ npm sürümü: $(npm --version)"
+    else
+        echo "❌ npm hâlâ çalışmıyor, Claude Code kurulumu atlanıyor..."
+        INSTALL_CLAUDE="h"
     fi
 
     # Claude Code kurulumu
