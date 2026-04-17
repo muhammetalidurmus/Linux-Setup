@@ -135,7 +135,7 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     echo "🔄 npm güncelleniyor..."
     # nodesource paketi npm bağımlılıklarını eksik kurabilir; npm'i sıfırdan yükle
     NPM_GLOBAL_DIR=$(node -e "console.log(require('path').dirname(process.execPath))")
-    if npm --version &>/dev/null 2>&1; then
+    if node -e "require('/usr/lib/node_modules/npm/node_modules/promise-retry')" &>/dev/null 2>&1; then
         # npm çalışıyorsa direkt güncelle
         $SUDO npm install -g npm@latest
     else
