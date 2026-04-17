@@ -132,66 +132,34 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     $SUDO apt-get install -y nodejs
 
     # npm'i en son sürüme güncelle
-    echo "🔄 npm güncelleniyor..."
-    # nodesource paketi npm bağımlılıklarını eksik kurabilir; npm'i sıfırdan yükle
-    NPM_GLOBAL_DIR=$(node -e "console.log(require('path').dirname(process.execPath))")
-    if node -e "require('/usr/lib/node_modules/npm/node_modules/promise-retry')" &>/dev/null 2>&1; then
-        # npm çalışıyorsa direkt güncelle
-        $SUDO npm install -g npm@latest
-    else
-        echo "⚠️  Mevcut npm bozuk, npm sıfırdan yükleniyor..."
-        # npm'i tamamen kaldır ve node ile birlikte gelen paketten yeniden kur
-        $SUDO rm -rf /usr/lib/node_modules/npm
-        # npx olmadan node ile npm tarball'ını indir ve kur
-        node -e "
-const https = require('https');
-const { execSync } = require('child_process');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
+    # npm'i curl+tar ile yeniden kur (nodesource npm bozuk gelebilir)
+    echo "🔄 npm yeniden kuruluyor..."
+    NPM_VERSION="10.9.2"
+    $SUDO rm -rf /usr/lib/node_modules/npm
+    curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp/npm-install.tgz
+    $SUDO mkdir -p /usr/lib/node_modules/npm
+    $SUDO tar -xzf /tmp/npm-install.tgz -C /usr/lib/node_modules/npm --strip-components=1
+    $SUDO ln -sf /usr/lib/node_modules/npm/bin/npm /usr/bin/npm
+    $SUDO ln -sf /usr/lib/node_modules/npm/bin/npx /usr/bin/npx
+    rm -f /tmp/npm-install.tgz
 
-https.get('https://registry.npmjs.org/npm/latest', (res) => {
-  let body = '';
-  res.on('data', d => body += d);
-  res.on('end', () => {
-    const version = JSON.parse(body).version;
-    const tarUrl = \`https://registry.npmjs.org/npm/-/npm-\${version}.tgz\`;
-    const tmpFile = path.join(os.tmpdir(), 'npm-latest.tgz');
-    const file = fs.createWriteStream(tmpFile);
-    https.get(tarUrl, (r) => {
-      r.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        execSync(\`tar -xzf \${tmpFile} -C /usr/lib/node_modules --strip-components=1 --one-top-level=npm\`, { stdio: 'inherit' });
-        execSync(\`ln -sf /usr/lib/node_modules/npm/bin/npm /usr/bin/npm\`, { stdio: 'inherit' });
-        execSync(\`ln -sf /usr/lib/node_modules/npm/bin/npx /usr/bin/npx\`, { stdio: 'inherit' });
-        console.log('npm kuruldu: ' + version);
-      });
-    });
-  });
-});
-" || {
-            echo "❌ npm yüklenemedi. Claude Code kurulumu atlanıyor."
-            INSTALL_CLAUDE="h"
-        }
-    fi
-
-    # Kurulum sonrası doğrulama
     if npm --version &>/dev/null 2>&1; then
         echo "✅ npm sürümü: $(npm --version)"
     else
-        echo "❌ npm hâlâ çalışmıyor, Claude Code kurulumu atlanıyor..."
+        echo "❌ npm kurulamadı, Claude Code atlanıyor."
         INSTALL_CLAUDE="h"
     fi
 
     # Claude Code kurulumu
-    read -r -p "🤖 Claude Code kurulsun mu? [E/h]: " INSTALL_CLAUDE
-    INSTALL_CLAUDE=${INSTALL_CLAUDE:-E}
-    if [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
-        echo "🤖 Claude Code kuruluyor..."
-        $SUDO npm install -g @anthropic-ai/claude-code
-    else
-        echo "⏭️  Claude Code kurulumu atlandı."
+    if npm --version &>/dev/null 2>&1; then
+        read -r -p "🤖 Claude Code kurulsun mu? [E/h]: " INSTALL_CLAUDE
+        INSTALL_CLAUDE=${INSTALL_CLAUDE:-E}
+        if [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
+            echo "🤖 Claude Code kuruluyor..."
+            $SUDO npm install -g @anthropic-ai/claude-code
+        else
+            echo "⏭️  Claude Code kurulumu atlandı."
+        fi
     fi
 else
     echo "⏭️  Node.js kurulumu atlandı. Claude Code da atlanıyor."
