@@ -33,11 +33,17 @@ $SUDO timedatectl set-timezone Europe/Istanbul
 
 # Sistem güncellemesi
 echo "📦 Sistem paketleri güncelleniyor..."
-$SUDO apt update && $SUDO apt upgrade -y
+$SUDO apt-get update
+
+# Güncelleme: hata durumunda --fix-missing ile tekrar dene
+if ! $SUDO apt-get upgrade -y; then
+    echo "⚠️  Bazı paketler indirilemedi, --fix-missing ile tekrar deneniyor..."
+    $SUDO apt-get upgrade -y --fix-missing || true
+fi
 
 # Gerekli paketlerin kurulumu
 echo "🔧 Gerekli paketler kuruluyor..."
-$SUDO apt install -y \
+$SUDO apt-get install -y \
     apt-transport-https \
     ca-certificates \
     curl \
@@ -49,7 +55,7 @@ $SUDO apt install -y \
 
 # Docker'ın eski sürümlerini kaldır
 echo "🧹 Eski Docker sürümleri temizleniyor..."
-$SUDO apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+$SUDO apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
 
 # Docker GPG anahtarını ekle
 echo "🔐 Docker GPG anahtarı ekleniyor..."
@@ -61,34 +67,38 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docke
 
 # Paket listesini güncelle
 echo "🔄 Paket listesi güncelleniyor..."
-$SUDO apt update
+$SUDO apt-get update
 
 # Docker Engine'i kur
 echo "🐳 Docker Engine kuruluyor..."
-$SUDO apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+$SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Docker servisini başlat ve otomatik başlatmayı etkinleştir
 echo "⚡ Docker servisi başlatılıyor..."
 $SUDO systemctl start docker
 $SUDO systemctl enable docker
 
-# Kullanıcıyı docker grubuna ekle
-echo "👤 Kullanıcı docker grubuna ekleniyor..."
-$SUDO usermod -aG docker $USER
+# Kullanıcıyı docker grubuna ekle (root değilse)
+if [[ $EUID -ne 0 ]]; then
+    echo "👤 Kullanıcı ($USER) docker grubuna ekleniyor..."
+    $SUDO usermod -aG docker "$USER"
+fi
 
 # SSH Konfigürasyonu - PermitRootLogin yes
 echo "🔑 SSH PermitRootLogin ayarlanıyor..."
-$SUDO sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-$SUDO sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-if ! grep -q "PermitRootLogin" /etc/ssh/sshd_config; then
-    echo "PermitRootLogin yes" | $SUDO tee -a /etc/ssh/sshd_config
+SSH_CONFIG="/etc/ssh/sshd_config"
+# Önce mevcut satırları güncelle
+$SUDO sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
+# Eğer hiç satır yoksa ekle
+if ! grep -q "^PermitRootLogin" "$SSH_CONFIG"; then
+    echo "PermitRootLogin yes" | $SUDO tee -a "$SSH_CONFIG"
 fi
 echo "🔄 SSH servisi yeniden başlatılıyor..."
 $SUDO systemctl restart ssh
 
 # UFW güvenlik duvarını kur ve yapılandır
 echo "🛡️ UFW güvenlik duvarı yapılandırılıyor..."
-$SUDO apt install -y ufw
+$SUDO apt-get install -y ufw
 
 $SUDO ufw default deny incoming
 $SUDO ufw default allow outgoing
@@ -105,8 +115,12 @@ $SUDO ufw --force enable
 
 # Docker Compose kurulumu (standalone sürüm)
 echo "🏗️ Docker Compose standalone sürümü kuruluyor..."
-DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
-$SUDO curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+DOCKER_COMPOSE_VERSION=$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+if [[ -z "$DOCKER_COMPOSE_VERSION" ]]; then
+    echo "⚠️  Docker Compose sürümü alınamadı, varsayılan olarak v2.36.0 kullanılıyor..."
+    DOCKER_COMPOSE_VERSION="v2.36.0"
+fi
+$SUDO curl -fsSL "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 $SUDO chmod +x /usr/local/bin/docker-compose
 
 # Node.js 22.x LTS kurulumu
@@ -114,8 +128,8 @@ read -r -p "📦 Node.js 22.x LTS kurulsun mu? [E/h]: " INSTALL_NODE
 INSTALL_NODE=${INSTALL_NODE:-E}
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     echo "📦 Node.js 22.x LTS kuruluyor..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    $SUDO apt install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
+    $SUDO apt-get install -y nodejs
 
     # npm'i en son sürüme güncelle
     echo "🔄 npm güncelleniyor..."
@@ -132,26 +146,30 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     fi
 else
     echo "⏭️  Node.js kurulumu atlandı. Claude Code da atlanıyor."
+    INSTALL_CLAUDE="h"
 fi
 
 # Kurulum kontrolü
+echo ""
 echo "🔍 Kurulum kontrol ediliyor..."
+echo "─────────────────────────────"
+
 echo "Docker sürümü:"
-docker --version
+docker --version || echo "❌ Docker bulunamadı!"
 
 echo "Docker Compose sürümü:"
-docker-compose --version
+docker-compose --version || docker compose version || echo "❌ Docker Compose bulunamadı!"
 
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     echo "Node.js sürümü:"
-    node --version
+    node --version || echo "❌ Node.js bulunamadı!"
     echo "npm sürümü:"
-    npm --version
+    npm --version || echo "❌ npm bulunamadı!"
 fi
 
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]] && [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
     echo "Claude Code sürümü:"
-    claude --version
+    claude --version || echo "❌ Claude Code bulunamadı!"
 fi
 
 echo "UFW durumu:"
@@ -161,8 +179,10 @@ echo "=================================================="
 echo "✅ Kurulum tamamlandı!"
 echo ""
 echo "📝 Önemli notlar:"
-echo "• Docker kullanabilmek için oturumu kapatıp tekrar açmanız gerekebilir"
-echo "• Veya 'newgrp docker' komutunu çalıştırabilirsiniz"
+if [[ $EUID -ne 0 ]]; then
+    echo "• Docker kullanabilmek için oturumu kapatıp tekrar açmanız gerekebilir"
+    echo "• Veya 'newgrp docker' komutunu çalıştırabilirsiniz"
+fi
 echo "• UFW güvenlik duvarı etkinleştirildi"
 echo "• Açık portlar: 22 (SSH), 80 (HTTP), 443 (HTTPS)"
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
@@ -173,17 +193,17 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]] && [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
 fi
 echo ""
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]] && [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
-    echo "🔑 Claude Code kurulumu:"
-    echo "• API key ayarlamak için: claude auth"
-    echo "• Veya environment variable: export ANTHROPIC_API_KEY=your_key_here"
+    echo "🔑 Claude Code API key ayarlamak için:"
+    echo "   export ANTHROPIC_API_KEY=your_key_here"
+    echo "   veya: claude auth"
     echo ""
 fi
 echo "🧪 Test komutları:"
-echo "• Docker: docker run hello-world"
+echo "   docker run hello-world"
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
-    echo "• Node.js: node --version"
+    echo "   node --version"
 fi
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]] && [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
-    echo "• Claude Code: claude --help"
+    echo "   claude --help"
 fi
 echo "=================================================="
