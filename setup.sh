@@ -27,11 +27,42 @@ else
     SUDO="sudo"
 fi
 
-# Saat dilimi ayarı
+# ─── Saat Dilimi ve Locale Ayarları ──────────────────────────────────────────
+
 echo "🕐 Saat dilimi Europe/Istanbul olarak ayarlanıyor..."
 $SUDO timedatectl set-timezone Europe/Istanbul
 
-# Sistem güncellemesi
+echo "🌍 Locale yapılandırılıyor..."
+
+# tr_TR.UTF-8 satırını locale.gen'de etkinleştir
+$SUDO sed -i 's/^# *tr_TR.UTF-8 UTF-8/tr_TR.UTF-8 UTF-8/' /etc/locale.gen || true
+grep -q "tr_TR.UTF-8 UTF-8" /etc/locale.gen || echo "tr_TR.UTF-8 UTF-8" | $SUDO tee -a /etc/locale.gen
+
+# en_US.UTF-8 satırını da etkinleştir (LANG için gerekli)
+$SUDO sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen || true
+grep -q "en_US.UTF-8 UTF-8" /etc/locale.gen || echo "en_US.UTF-8 UTF-8" | $SUDO tee -a /etc/locale.gen
+
+echo "🔄 Locale dosyaları oluşturuluyor..."
+$SUDO locale-gen
+
+echo "📝 Sistem locale ayarlanıyor (LANG=en_US.UTF-8, LC_TIME=tr_TR.UTF-8)..."
+$SUDO bash -c 'cat > /etc/default/locale <<EOF
+LANG=en_US.UTF-8
+LC_TIME=tr_TR.UTF-8
+EOF'
+
+# Mevcut oturum için ortam değişkenlerini uygula
+export LANG=en_US.UTF-8
+export LC_TIME=tr_TR.UTF-8
+
+echo "✅ Saat dilimi ve locale kontrol:"
+timedatectl
+date
+locale | grep -E "LANG|LC_TIME"
+echo "────────────────────────────────────────────────"
+
+# ─── Sistem Güncellemesi ──────────────────────────────────────────────────────
+
 echo "📦 Sistem paketleri güncelleniyor..."
 $SUDO apt-get update
 
@@ -51,7 +82,10 @@ $SUDO apt-get install -y \
     lsb-release \
     software-properties-common \
     git \
-    build-essential
+    build-essential \
+    locales
+
+# ─── Docker Kurulumu ──────────────────────────────────────────────────────────
 
 # Docker'ın eski sürümlerini kaldır
 echo "🧹 Eski Docker sürümleri temizleniyor..."
@@ -84,7 +118,8 @@ if [[ $EUID -ne 0 ]]; then
     $SUDO usermod -aG docker "$USER"
 fi
 
-# SSH Konfigürasyonu - PermitRootLogin yes
+# ─── SSH Yapılandırması ───────────────────────────────────────────────────────
+
 echo "🔑 SSH PermitRootLogin ayarlanıyor..."
 SSH_CONFIG="/etc/ssh/sshd_config"
 $SUDO sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
@@ -94,7 +129,8 @@ fi
 echo "🔄 SSH servisi yeniden başlatılıyor..."
 $SUDO systemctl restart ssh
 
-# UFW güvenlik duvarını kur ve yapılandır
+# ─── UFW Güvenlik Duvarı ─────────────────────────────────────────────────────
+
 echo "🛡️ UFW güvenlik duvarı yapılandırılıyor..."
 $SUDO apt-get install -y ufw
 
@@ -111,7 +147,8 @@ $SUDO ufw allow 443/tcp
 echo "✅ UFW etkinleştiriliyor..."
 $SUDO ufw --force enable
 
-# Docker Compose kurulumu (standalone sürüm)
+# ─── Docker Compose (Standalone) ─────────────────────────────────────────────
+
 echo "🏗️ Docker Compose standalone sürümü kuruluyor..."
 DOCKER_COMPOSE_VERSION=$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
 if [[ -z "$DOCKER_COMPOSE_VERSION" ]]; then
@@ -121,7 +158,8 @@ fi
 $SUDO curl -fsSL "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 $SUDO chmod +x /usr/local/bin/docker-compose
 
-# Node.js 22.x LTS kurulumu
+# ─── Node.js ve Claude Code ──────────────────────────────────────────────────
+
 read -r -p "📦 Node.js 22.x LTS kurulsun mu? [E/h]: " INSTALL_NODE
 INSTALL_NODE=${INSTALL_NODE:-E}
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
@@ -152,7 +190,8 @@ else
     INSTALL_CLAUDE="h"
 fi
 
-# Kurulum kontrolü
+# ─── Kurulum Kontrolü ────────────────────────────────────────────────────────
+
 echo ""
 echo "🔍 Kurulum kontrol ediliyor..."
 echo "─────────────────────────────"
@@ -178,6 +217,10 @@ fi
 echo "UFW durumu:"
 $SUDO ufw status
 
+echo "Saat dilimi ve locale:"
+timedatectl | grep "Time zone"
+locale | grep -E "LANG|LC_TIME"
+
 echo "=================================================="
 echo "✅ Kurulum tamamlandı!"
 echo ""
@@ -186,6 +229,8 @@ if [[ $EUID -ne 0 ]]; then
     echo "• Docker kullanabilmek için oturumu kapatıp tekrar açmanız gerekebilir"
     echo "• Veya 'newgrp docker' komutunu çalıştırabilirsiniz"
 fi
+echo "• Saat dilimi: Europe/Istanbul"
+echo "• Sistem dili: en_US.UTF-8 | Tarih/saat formatı: tr_TR.UTF-8"
 echo "• UFW güvenlik duvarı etkinleştirildi"
 echo "• Açık portlar: 22 (SSH), 80 (HTTP), 443 (HTTPS)"
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
