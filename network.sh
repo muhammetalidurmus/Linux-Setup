@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Ubuntu Docker Kurulum ve Sistem Yapılandırma Script'i
-# Bu script yeni bir Ubuntu makinesinde Docker kurulumu yapar ve temel güvenlik yapılandırması gerçekleştirir
+# Ubuntu Static IP Konfigürasyon Script'i
+# Bu script Ubuntu sunucunuza static IP adresi atar
 
-set -e  # Hata durumunda script'i durdur
+set -e
 
 # Yetki kontrolü
 if [[ $EUID -ne 0 ]]; then
     echo "⚠️  UYARI: Bu script root yetkisi gerektiriyor."
-    echo "   'sudo ./setup.sh' veya root kullanıcısı ile çalıştırmanız önerilir."
+    echo "   'sudo ./network.sh' veya root kullanıcısı ile çalıştırmanız önerilir."
     read -r -p "   Yine de devam etmek istiyor musunuz? [e/H]: " _DEVAM
     _DEVAM=${_DEVAM:-H}
     if [[ ! "$_DEVAM" =~ ^[Ee]$ ]]; then
@@ -17,202 +17,196 @@ if [[ $EUID -ne 0 ]]; then
     fi
 fi
 
-echo "🚀 Ubuntu Docker Kurulum ve Yapılandırma Script'i başlatılıyor..."
-echo "=================================================="
+echo "🌐 Ubuntu Static IP Konfigürasyon Script'i"
+echo "=========================================="
 
-# Root olarak çalışıyorsa sudo komutlarını düz çalıştır
-if [[ $EUID -eq 0 ]]; then
-    SUDO=""
-else
-    SUDO="sudo"
-fi
-
-# Saat dilimi ayarı
-echo "🕐 Saat dilimi Europe/Istanbul olarak ayarlanıyor..."
-$SUDO timedatectl set-timezone Europe/Istanbul
-
-# Sistem güncellemesi
-echo "📦 Sistem paketleri güncelleniyor..."
-$SUDO apt-get update
-
-# Güncelleme: hata durumunda --fix-missing ile tekrar dene
-if ! $SUDO apt-get upgrade -y; then
-    echo "⚠️  Bazı paketler indirilemedi, --fix-missing ile tekrar deneniyor..."
-    $SUDO apt-get upgrade -y --fix-missing || true
-fi
-
-# Gerekli paketlerin kurulumu
-echo "🔧 Gerekli paketler kuruluyor..."
-$SUDO apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release \
-    software-properties-common \
-    git \
-    build-essential
-
-# Docker'ın eski sürümlerini kaldır
-echo "🧹 Eski Docker sürümleri temizleniyor..."
-$SUDO apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
-
-# Docker GPG anahtarını ekle
-echo "🔐 Docker GPG anahtarı ekleniyor..."
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO gpg --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-
-# Docker deposunu ekle
-echo "📋 Docker deposu ekleniyor..."
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Paket listesini güncelle
-echo "🔄 Paket listesi güncelleniyor..."
-$SUDO apt-get update
-
-# Docker Engine'i kur
-echo "🐳 Docker Engine kuruluyor..."
-$SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Docker servisini başlat ve otomatik başlatmayı etkinleştir
-echo "⚡ Docker servisi başlatılıyor..."
-$SUDO systemctl start docker
-$SUDO systemctl enable docker
-
-# Kullanıcıyı docker grubuna ekle (root değilse)
-if [[ $EUID -ne 0 ]]; then
-    echo "👤 Kullanıcı ($USER) docker grubuna ekleniyor..."
-    $SUDO usermod -aG docker "$USER"
-fi
-
-# SSH Konfigürasyonu - PermitRootLogin yes
-echo "🔑 SSH PermitRootLogin ayarlanıyor..."
-SSH_CONFIG="/etc/ssh/sshd_config"
-$SUDO sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
-if ! grep -q "^PermitRootLogin" "$SSH_CONFIG"; then
-    echo "PermitRootLogin yes" | $SUDO tee -a "$SSH_CONFIG"
-fi
-echo "🔄 SSH servisi yeniden başlatılıyor..."
-$SUDO systemctl restart ssh
-
-# UFW güvenlik duvarını kur ve yapılandır
-echo "🛡️ UFW güvenlik duvarı yapılandırılıyor..."
-$SUDO apt-get install -y ufw
-$SUDO ufw default deny incoming
-$SUDO ufw default allow outgoing
-echo "🔓 SSH portu (22) açılıyor..."
-$SUDO ufw allow ssh
-echo "🌐 HTTP (80) ve HTTPS (443) portları açılıyor..."
-$SUDO ufw allow 80/tcp
-$SUDO ufw allow 443/tcp
-echo "✅ UFW etkinleştiriliyor..."
-$SUDO ufw --force enable
-
-# Docker Compose kurulumu (standalone sürüm)
-echo "🏗️ Docker Compose standalone sürümü kuruluyor..."
-DOCKER_COMPOSE_VERSION=$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-if [[ -z "$DOCKER_COMPOSE_VERSION" ]]; then
-    echo "⚠️  Docker Compose sürümü alınamadı, varsayılan v2.36.0 kullanılıyor..."
-    DOCKER_COMPOSE_VERSION="v2.36.0"
-fi
-$SUDO curl -fsSL "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-$SUDO chmod +x /usr/local/bin/docker-compose
-
-# Node.js 22.x LTS kurulumu
-read -r -p "📦 Node.js 22.x LTS kurulsun mu? [E/h]: " INSTALL_NODE
-INSTALL_NODE=${INSTALL_NODE:-E}
-INSTALL_CLAUDE="h"
-
-if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
-    echo "📦 Node.js 22.x LTS kuruluyor..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
-    $SUDO apt-get install -y nodejs
-
-    # npm'i curl+tar ile yeniden kur (nodesource npm bozuk gelebilir)
-    echo "🔄 npm yeniden kuruluyor..."
-    NPM_VERSION="10.9.2"
-    $SUDO rm -rf /usr/lib/node_modules/npm
-    curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp/npm-install.tgz
-    $SUDO mkdir -p /usr/lib/node_modules/npm
-    $SUDO tar -xzf /tmp/npm-install.tgz -C /usr/lib/node_modules/npm --strip-components=1
-    $SUDO ln -sf /usr/lib/node_modules/npm/bin/npm /usr/bin/npm
-    $SUDO ln -sf /usr/lib/node_modules/npm/bin/npx /usr/bin/npx
-    rm -f /tmp/npm-install.tgz
-
-    if npm --version &>/dev/null 2>&1; then
-        echo "✅ npm sürümü: $(npm --version)"
-    else
-        echo "❌ npm kurulamadı, Claude Code atlanıyor."
-        INSTALL_CLAUDE="h"
-    fi
-
-    # Claude Code kurulumu
-    if npm --version &>/dev/null 2>&1; then
-        read -r -p "🤖 Claude Code kurulsun mu? [E/h]: " INSTALL_CLAUDE
-        INSTALL_CLAUDE=${INSTALL_CLAUDE:-E}
-        if [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
-            echo "🤖 Claude Code kuruluyor..."
-            $SUDO npm install -g @anthropic-ai/claude-code
-        else
-            echo "⏭️  Claude Code kurulumu atlandı."
-        fi
-    fi
-else
-    echo "⏭️  Node.js kurulumu atlandı. Claude Code da atlanıyor."
-fi
-
-# Kurulum kontrolü
+# Mevcut network interface'leri göster
+echo "📡 Mevcut network durumu:"
+ip addr show | grep -E "(inet |UP|DOWN)" --color=never
 echo ""
-echo "🔍 Kurulum kontrol ediliyor..."
-echo "─────────────────────────────"
 
-echo "Docker sürümü:"
-docker --version || echo "❌ Docker bulunamadı!"
+# Aktif network interface'ini otomatik tespit et
+echo "🔍 Aktif network interface'i tespit ediliyor..."
 
-echo "Docker Compose sürümü:"
-docker-compose --version || docker compose version || echo "❌ Docker Compose bulunamadı!"
+# Default route üzerinden aktif interface'i bul
+INTERFACE=$(ip route show default | grep -oP 'dev \K\w+' | head -n1)
 
-if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
-    echo "Node.js sürümü:"
-    node --version || echo "❌ Node.js bulunamadı!"
-    echo "npm sürümü:"
-    npm --version || echo "❌ npm bulunamadı!"
+if [[ -z "$INTERFACE" ]]; then
+    # Alternatif method: UP durumundaki ve IP'si olan interface'i bul
+    INTERFACE=$(ip addr show | grep -B1 "inet.*scope global" | grep "UP" | head -n1 | cut -d: -f2 | sed 's/^ *//')
 fi
 
-if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]] && [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
-    echo "Claude Code sürümü:"
-    claude --version || echo "❌ Claude Code bulunamadı!"
-fi
-
-echo "UFW durumu:"
-$SUDO ufw status
-
-echo "=================================================="
-echo "✅ Kurulum tamamlandı!"
-echo ""
-echo "📝 Önemli notlar:"
-if [[ $EUID -ne 0 ]]; then
-    echo "• Docker kullanabilmek için oturumu kapatıp tekrar açmanız gerekebilir"
-    echo "• Veya 'newgrp docker' komutunu çalıştırabilirsiniz"
-fi
-echo "• UFW güvenlik duvarı etkinleştirildi"
-echo "• Açık portlar: 22 (SSH), 80 (HTTP), 443 (HTTPS)"
-if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
-    echo "• Node.js 22.x LTS kuruldu"
-fi
-if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]] && [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
-    echo "• Claude Code kuruldu - API key'inizi ayarlamayı unutmayın"
+if [[ -z "$INTERFACE" ]]; then
+    echo "❌ Aktif network interface'i tespit edilemedi!"
+    echo "📡 Mevcut interface'ler:"
+    ip link show | grep -E "^[0-9]+:" | cut -d: -f2 | sed 's/^ *//' | grep -v lo
     echo ""
-    echo "🔑 Claude Code API key ayarlamak için:"
-    echo "   export ANTHROPIC_API_KEY=your_key_here"
-    echo "   veya: claude auth"
+    read -p "🔌 Network interface adını manuel olarak girin: " INTERFACE
+else
+    echo "✅ Aktif interface tespit edildi: $INTERFACE"
+    
+    # Mevcut IP bilgilerini göster
+    echo "📋 Mevcut $INTERFACE interface bilgileri:"
+    ip addr show "$INTERFACE" | grep "inet " | head -n1
+    echo ""
+    
+    # Kullanıcıya onay sor
+    read -p "🤔 Bu interface'i ($INTERFACE) kullanmak istiyor musunuz? (Y/n): " USE_DETECTED
+    if [[ "$USE_DETECTED" =~ ^[Nn]$ ]]; then
+        echo "📡 Mevcut interface'ler:"
+        ip link show | grep -E "^[0-9]+:" | cut -d: -f2 | sed 's/^ *//' | grep -v lo
+        echo ""
+        read -p "🔌 Kullanmak istediğiniz interface adını girin: " INTERFACE
+    fi
 fi
+
+# Interface'in var olup olmadığını kontrol et
+if ! ip link show "$INTERFACE" > /dev/null 2>&1; then
+    echo "❌ '$INTERFACE' interface'i bulunamadı!"
+    exit 1
+fi
+
+echo "✅ Interface '$INTERFACE' bulundu."
 echo ""
-echo "🧪 Test komutları:"
-echo "   docker run hello-world"
-if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
-    echo "   node --version"
+
+# IP bilgilerini topla
+read -p "🏠 Static IP adresini girin (örn: 10.101.7.100): " STATIC_IP
+read -p "🎯 Subnet mask'ı CIDR formatında girin (örn: 24 for /24): " SUBNET
+read -p "🚪 Gateway IP adresini girin (örn: 10.101.7.1): " GATEWAY
+read -p "🌍 Birincil DNS sunucusunu girin (örn: 8.8.8.8): " DNS1
+read -p "🌍 İkincil DNS sunucusunu girin (örn: 1.1.1.1 veya boş bırakın): " DNS2
+
+# IP formatlarını doğrula (basit kontrol)
+validate_ip() {
+    local ip=$1
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+if ! validate_ip "$STATIC_IP"; then
+    echo "❌ Geçersiz IP adresi formatı: $STATIC_IP"
+    exit 1
 fi
-if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]] && [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
-    echo "   claude --help"
+
+if ! validate_ip "$GATEWAY"; then
+    echo "❌ Geçersiz gateway adresi formatı: $GATEWAY"
+    exit 1
 fi
-echo "=================================================="
+
+if ! validate_ip "$DNS1"; then
+    echo "❌ Geçersiz DNS adresi formatı: $DNS1"
+    exit 1
+fi
+
+if [[ -n "$DNS2" ]] && ! validate_ip "$DNS2"; then
+    echo "❌ Geçersiz ikinci DNS adresi formatı: $DNS2"
+    exit 1
+fi
+
+# Subnet kontrolü
+if ! [[ "$SUBNET" =~ ^[0-9]+$ ]] || [ "$SUBNET" -lt 1 ] || [ "$SUBNET" -gt 32 ]; then
+    echo "❌ Geçersiz subnet mask: $SUBNET (1-32 arası olmalı)"
+    exit 1
+fi
+
+echo ""
+echo "📄 Konfigürasyon Özeti:"
+echo "Interface: $INTERFACE"
+echo "Static IP: $STATIC_IP/$SUBNET"
+echo "Gateway: $GATEWAY"
+echo "DNS1: $DNS1"
+echo "DNS2: ${DNS2:-'Belirtilmedi'}"
+echo ""
+
+read -p "✅ Bu ayarlarla devam etmek istiyor musunuz? (y/N): " CONFIRM
+
+if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "❌ İşlem iptal edildi."
+    exit 0
+fi
+
+# Netplan konfigürasyon dosyasını bul
+NETPLAN_DIR="/etc/netplan"
+NETPLAN_FILE=""
+
+# Mevcut netplan dosyalarını listele
+for file in "$NETPLAN_DIR"/*.yaml "$NETPLAN_DIR"/*.yml; do
+    if [[ -f "$file" ]]; then
+        NETPLAN_FILE="$file"
+        break
+    fi
+done
+
+# Eğer netplan dosyası bulunamazsa, yeni bir tane oluştur
+if [[ -z "$NETPLAN_FILE" ]]; then
+    NETPLAN_FILE="$NETPLAN_DIR/01-static-ip.yaml"
+    echo "⚠️ Mevcut netplan dosyası bulunamadı. Yeni dosya oluşturuluyor: $NETPLAN_FILE"
+else
+    echo "📁 Mevcut netplan dosyası bulundu: $NETPLAN_FILE"
+fi
+
+# Mevcut konfigürasyonu yedekle
+BACKUP_FILE="${NETPLAN_FILE}.backup-$(date +%Y%m%d-%H%M%S)"
+if [[ -f "$NETPLAN_FILE" ]]; then
+    echo "💾 Mevcut konfigürasyon yedekleniyor: $BACKUP_FILE"
+    cp "$NETPLAN_FILE" "$BACKUP_FILE"
+fi
+
+# DNS yapılandırması
+if [[ -n "$DNS2" ]]; then
+    DNS_CONFIG="[$DNS1, $DNS2]"
+else
+    DNS_CONFIG="[$DNS1]"
+fi
+
+# Yeni netplan konfigürasyonunu oluştur
+echo "📝 Yeni netplan konfigürasyonu yazılıyor..."
+
+cat > "$NETPLAN_FILE" << EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    $INTERFACE:
+      dhcp4: no
+      addresses:
+        - $STATIC_IP/$SUBNET
+      routes:
+        - to: default
+          via: $GATEWAY
+      nameservers:
+        addresses: $DNS_CONFIG
+EOF
+
+echo "✅ Netplan konfigürasyonu yazıldı."
+
+# Konfigürasyon dosyasını göster
+echo ""
+echo "📋 Yeni konfigürasyon dosyası içeriği:"
+echo "======================================"
+cat "$NETPLAN_FILE"
+echo "======================================"
+echo ""
+
+# Konfigürasyonu uygula
+echo "🔄 Netplan konfigürasyonu uygulanıyor..."
+netplan apply
+echo ""
+echo "🎉 Static IP konfigürasyonu başarıyla uygulandı!"
+echo ""
+echo "📊 Yeni network durumu:"
+ip addr show "$INTERFACE"
+
+echo ""
+echo "📝 Önemli Notlar:"
+echo "• Network konfigürasyonu kalıcı olarak değiştirildi"
+echo "• Yedek dosya: $BACKUP_FILE"
+echo "• SSH bağlantınız kopmadıysa ayarlar doğru çalışıyor"
+echo "• Sorun yaşarsanız yedek dosyayı geri yükleyebilirsiniz:"
+echo "  sudo mv $BACKUP_FILE $NETPLAN_FILE && sudo netplan apply"
+echo ""
+echo "🎯 Yeni IP adresiniz: $STATIC_IP"
+echo "=========================================="
