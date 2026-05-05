@@ -164,7 +164,7 @@ read -r -p "📦 Node.js 22.x LTS kurulsun mu? [E/h]: " INSTALL_NODE
 INSTALL_NODE=${INSTALL_NODE:-E}
 if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     echo "📦 Node.js 22.x LTS kuruluyor..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
     $SUDO apt-get install -y nodejs
 
     # npm'i kendisi ile güncelle (en güvenilir yöntem)
