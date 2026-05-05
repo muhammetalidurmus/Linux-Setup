@@ -167,22 +167,22 @@ if [[ "$INSTALL_NODE" =~ ^[Ee]$ ]]; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO bash -
     $SUDO apt-get install -y nodejs
 
-    # npm'i kendisi ile güncelle (en güvenilir yöntem)
-    echo "🔄 npm güncelleniyor..."
-    $SUDO npm install -g npm@latest
-
     # Claude Code kurulumu
-    if npm --version &>/dev/null 2>&1; then
+    if command -v npm >/dev/null 2>&1; then
         read -r -p "🤖 Claude Code kurulsun mu? [E/h]: " INSTALL_CLAUDE
         INSTALL_CLAUDE=${INSTALL_CLAUDE:-E}
         if [[ "$INSTALL_CLAUDE" =~ ^[Ee]$ ]]; then
             echo "🤖 Claude Code kuruluyor..."
-            $SUDO npm install -g @anthropic-ai/claude-code
+            if ! $SUDO npm install -g @anthropic-ai/claude-code; then
+                echo "⚠️  Claude Code kurulumu başarısız oldu."
+                echo "   Manuel deneyin: sudo npm install -g @anthropic-ai/claude-code"
+                INSTALL_CLAUDE="h"
+            fi
         else
             echo "⏭️  Claude Code kurulumu atlandı."
         fi
     else
-        echo "❌ npm kurulamadı, Claude Code atlanıyor."
+        echo "❌ npm bulunamadı, Claude Code atlanıyor."
         INSTALL_CLAUDE="h"
     fi
 else
